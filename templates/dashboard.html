@@ -1,0 +1,57 @@
+﻿<!-- templates/dashboard.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Store {{ store_id }} Dashboard</title>
+  <script src="/static/main.js" defer></script>
+  <script>
+    setTimeout(() => location.reload(), 60000);
+  </script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-900 p-6 font-sans">
+  <div class="max-w-5xl mx-auto">
+    <h1 class="text-3xl font-bold mb-4">📍 Store {{ store_id }} – Live Dashboard</h1>
+    <p class="text-sm text-gray-500 mb-6">Auto-refreshes every 60 seconds</p>
+
+    <table class="w-full bg-white shadow-md rounded-lg overflow-hidden">
+      <thead class="bg-gray-200 text-left text-sm uppercase tracking-wider">
+        <tr>
+          <th class="p-3">Name</th>
+          <th class="p-3">Clock In</th>
+          <th class="p-3">Time on Clock</th>
+          <th class="p-3">Total Hours</th>
+          <th class="p-3 text-center">Lunch Needed?</th>
+          <th class="p-3 text-center">Overtime?</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for emp in employees %}
+        <tr class="border-b hover:bg-gray-50 text-lg">
+          <td class="p-3 font-semibold">{{ emp.name }}</td>
+          <td class="p-3">{{ emp.clock_in }}</td>
+          <td class="p-3">{{ emp.time_on_clock }} hrs</td>
+          <td class="p-3">{{ emp.total_hours }} hrs</td>
+          <td class="p-3 text-center">
+            {% if emp.lunch_needed %}
+              <span class="text-red-600 font-bold">⚠️ Yes</span>
+            {% else %}
+              <span class="text-green-600 font-semibold">No</span>
+            {% endif %}
+          </td>
+          <td class="p-3 text-center">
+            {% if emp.overtime %}
+              <span class="text-orange-600 font-bold">✅</span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>
