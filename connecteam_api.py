@@ -9,7 +9,10 @@ CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.j
 with open(CONFIG_PATH, "r") as f:
     config = json.load(f)
 
-API_KEY = config.get("connecteam_api_key")
+API_KEY = os.getenv("CONNECTEAM_API_KEY")
+if not API_KEY:
+    raise RuntimeError("Missing CONNECTEAM_API_KEY environment variable")
+
 STORE_MAP = config.get("store_map", {})
 BASE_URL = "https://api.connecteam.com"
 HEADERS = {
