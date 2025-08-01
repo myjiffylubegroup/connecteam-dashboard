@@ -1,57 +1,266 @@
-﻿<!-- templates/dashboard.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Store {{ store_id }} Dashboard</title>
-  <script src="/static/main.js" defer></script>
-  <script>
-    setTimeout(() => location.reload(), 60000);
-  </script>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet">
-</head>
-<body class="bg-gray-100 text-gray-900 p-6 font-sans">
-  <div class="max-w-5xl mx-auto">
-    <h1 class="text-3xl font-bold mb-4">📍 Store {{ store_id }} – Live Dashboard</h1>
-    <p class="text-sm text-gray-500 mb-6">Auto-refreshes every 60 seconds</p>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Connecteam Dashboard - {{ store_id }}</title>
 
-    <table class="w-full bg-white shadow-md rounded-lg overflow-hidden">
-      <thead class="bg-gray-200 text-left text-sm uppercase tracking-wider">
-        <tr>
-          <th class="p-3">Name</th>
-          <th class="p-3">Clock In</th>
-          <th class="p-3">Time on Clock</th>
-          <th class="p-3">Total Hours</th>
-          <th class="p-3 text-center">Lunch Needed?</th>
-          <th class="p-3 text-center">Overtime?</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for emp in employees %}
-        <tr class="border-b hover:bg-gray-50 text-lg">
-          <td class="p-3 font-semibold">{{ emp.name }}</td>
-          <td class="p-3">{{ emp.clock_in }}</td>
-          <td class="p-3">{{ emp.time_on_clock }} hrs</td>
-          <td class="p-3">{{ emp.total_hours }} hrs</td>
-          <td class="p-3 text-center">
-            {% if emp.lunch_needed %}
-              <span class="text-red-600 font-bold">⚠️ Yes</span>
-            {% else %}
-              <span class="text-green-600 font-semibold">No</span>
-            {% endif %}
-          </td>
-          <td class="p-3 text-center">
-            {% if emp.overtime %}
-              <span class="text-orange-600 font-bold">✅</span>
-            {% else %}
-              —
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <!-- Google Fonts: Roboto -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      /* Logo-inspired Colors */
+      --primary-color: #D71920;  /* Jiffy Lube Red */
+      --secondary-color: #F15A22; /* Orange Accent */
+      --background-color: #FAFAFA; /* Very Light Gray */
+      --text-color: #333333; /* Dark Gray Text */
+      --table-header-bg: var(--primary-color);
+      --table-header-text: #FFFFFF;
+      --needs-lunch-color: #D71920;
+      --status-active: #F15A22;
+      --status-inactive: #999999;
+      --status-paused: #F9A66D;
+      --badge-bg: #F15A22;
+      --badge-text: #FFFFFF;
+      --link-color: #D71920;
+    }
+
+    /* Global Styles */
+    body {
+      font-family: 'Roboto', Arial, sans-serif;
+      margin: 0;
+      background-color: var(--background-color);
+      color: var(--text-color);
+      line-height: 1.6;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      background-color: var(--primary-color);
+      padding: 0.75rem 2rem;
+      color: var(--table-header-text);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 3px 8px rgb(0 0 0 / 0.15);
+    }
+
+    header img {
+      height: 48px;
+      margin-right: 1rem;
+      object-fit: contain;
+    }
+
+    header h1 {
+      font-weight: 700;
+      font-size: 1.5rem;
+      margin: 0;
+      flex-grow: 1;
+      user-select: none;
+    }
+
+    /* Container */
+    main {
+      max-width: 1200px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    /* Table Styles */
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 15px rgb(215 25 32 / 0.15);
+      background-color: #FFFFFF;
+    }
+
+    thead tr {
+      background-color: var(--table-header-bg);
+      color: var(--table-header-text);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      padding: 16px 20px;
+      border-bottom: 1px solid #f0f0f0;
+      text-align: left;
+      font-size: 0.95rem;
+      vertical-align: middle;
+    }
+
+    tbody tr {
+      transition: background-color 0.25s ease;
+    }
+
+    tbody tr:hover {
+      background-color: #ffe6e6; /* subtle red tint on hover */
+      cursor: default;
+    }
+
+    tbody tr:nth-child(even) {
+      background-color: #fff5f5; /* very light red tint on even rows */
+    }
+
+    /* Status Styling */
+    .status {
+      font-weight: 600;
+      text-transform: capitalize;
+    }
+    .status.Active {
+      color: var(--status-active);
+    }
+    .status.Inactive {
+      color: var(--status-inactive);
+    }
+    .status.Paused {
+      color: var(--status-paused);
+    }
+
+    /* "Needs Lunch?" Badge */
+    .needsLunch {
+      color: var(--badge-text);
+      background-color: var(--badge-bg);
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 12px;
+      text-align: center;
+      display: inline-block;
+      width: 48px;
+      user-select: none;
+    }
+    .noLunch {
+      color: var(--badge-bg);
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 12px;
+      background-color: #ffe5e3;
+      display: inline-block;
+      width: 48px;
+      text-align: center;
+      user-select: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+      }
+
+      thead tr {
+        display: none;
+      }
+
+      tbody tr {
+        margin-bottom: 1.5rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgb(215 25 32 / 0.3);
+        padding: 1rem;
+      }
+
+      tbody td {
+        padding: 0.5rem 1rem;
+        position: relative;
+        padding-left: 50%;
+        border: none;
+        border-bottom: 1px solid #eee;
+        font-size: 0.9rem;
+      }
+
+      tbody td:last-child {
+        border-bottom: 0;
+      }
+
+      tbody td::before {
+        content: attr(data-label);
+        position: absolute;
+        left: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        font-weight: 600;
+        color: var(--primary-color);
+        white-space: nowrap;
+      }
+    }
+
+    /* No Employees Message */
+    .no-employees {
+      text-align: center;
+      padding: 3rem;
+      font-size: 1.1rem;
+      color: var(--status-inactive);
+      background: #fff0f0;
+      border-radius: 8px;
+      box-shadow: 0 1px 5px rgb(215 25 32 / 0.1);
+      max-width: 450px;
+      margin: 3rem auto;
+    }
+
+    /* Link styling for possible future links */
+    a {
+      color: var(--link-color);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <img src="https://drive.google.com/uc?export=view&id=1DY0wRrmFyKMGSAKIraECz48dlQy7WizV" alt="Company Logo" />
+    <h1>Store {{ store_id }} Dashboard</h1>
+  </header>
+
+  <main>
+    {% if employees %}
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Current Start</th>
+            <th>Current Time</th>
+            <th>Total Time</th>
+            <th>OT Today</th>
+            <th>Break Taken</th>
+            <th>Needs Lunch?</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for emp in employees %}
+          <tr>
+            <td data-label="Name">{{ emp.name }}</td>
+            <td data-label="Status" class="status {{ emp.status|default('') }}">{{ emp.status }}</td>
+            <td data-label="Current Start">{{ emp.currentSegmentStart or '-' }}</td>
+            <td data-label="Current Time">{{ emp.currentTimeOnClock }}</td>
+            <td data-label="Total Time">{{ emp.totalTimeOnClock }}</td>
+            <td data-label="OT Today">{{ emp.otToday }}</td>
+            <td data-label="Break Taken">{{ emp.breakTaken }}</td>
+            <td data-label="Needs Lunch?">
+              {% if emp.needsLunch %}
+                <span class="needsLunch" title="Needs Lunch">Yes</span>
+              {% else %}
+                <span class="noLunch" title="Does not need lunch">No</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="no-employees">No employees currently clocked in.</p>
+    {% endif %}
+  </main>
 </body>
 </html>
