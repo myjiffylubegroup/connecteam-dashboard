@@ -1,5 +1,46 @@
 {
-  "2501": "secure1",
-  "1257": "secure2",
-  "4182": "secure3"
+  "connecteam_api_key": "54c3579d-3a7f-4a7e-b74d-7251e5d99c92",
+  "store_map": {
+    "1270": {
+      "name": "Arroyo Grande",
+      "timeClockId": 7464416,
+      "pin": "1234"
+    },
+    "1932": {
+      "name": "Atascadero",
+      "timeClockId": 7134188,
+      "pin": "2345"
+    },
+    "2911": {
+      "name": "Paso Robles",
+      "timeClockId": 7557753,
+      "pin": "3456"
+    },
+    "1002": {
+      "name": "San Luis Obispo",
+      "timeClockId": 7464429,
+      "pin": "4567"
+    },
+    "609": {
+      "name": "Santa Maria",
+      "timeClockId": 7400132,
+      "pin": "5678"
+    },
+    "1257": {
+      "name": "Goleta",
+      "timeClockId": 7556463,
+      "pin": "6789"
+    },
+    "1396": {
+      "name": "SB Carrillo",
+      "timeClockId": 8036729,
+      "pin": "7890"
+    },
+    "4182": {
+      "name": "SB State",
+      "timeClockId": 8036732,
+      "pin": "8901"
+    }
+  }
 }
+

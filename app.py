@@ -1,36 +1,62 @@
 ﻿# app.py
-
 from flask import Flask, render_template, request, abort
 import json
-import sys
 import os
+import sys
+import logging
 
-# Add current script's directory to sys.path so Python can find local modules
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Add current directory to path so connecteam_api can be imported
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-print("✔️ sys.path includes:", os.path.dirname(os.path.abspath(__file__)))
 
-# Import your local module (must be in same folder)
-import connecteam_api
+try:
+    import connecteam_api
+except ImportError as e:
+    logging.error(f"Failed to import connecteam_api: {e}")
+    raise
+
+# Load store config
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+try:
+    with open(CONFIG_PATH, "r") as f:
+        config = json.load(f)
+    STORE_MAP = config.get("store_map", {})
+    if not STORE_MAP:
+        logging.warning("STORE_MAP is empty. Check config.json format.")
+except (FileNotFoundError, json.JSONDecodeError) as e:
+    STORE_MAP = {}
+    logging.error(f"Failed to load config.json: {e}")
 
 app = Flask(__name__)
 
-# Load store PINs from config
-with open("config.json", "r") as f:
-    STORE_PINS = json.load(f)
-
 @app.route("/")
 def home():
-    return "✅ Connecteam Dashboard Running. Use /store/<store_id>?pin=xxxx"
+    return "Connecteam Dashboard Running. Use /store/<store_id>?pin=xxxx"
 
 @app.route("/store/<store_id>")
 def store_dashboard(store_id):
     pin = request.args.get("pin")
-    if store_id not in STORE_PINS or STORE_PINS[store_id] != pin:
-        return abort(403)
+    if store_id not in STORE_MAP:
+        logging.warning(f"Attempted access to invalid store ID: {store_id}")
+        return abort(404, description="Store ID not found.")
 
-    employees = connecteam_api.get_employee_status_by_store(store_id)
+    if STORE_MAP[store_id].get("pin") != pin:
+        logging.warning(f"Invalid PIN attempt for store ID: {store_id}")
+        return abort(403, description="Invalid PIN.")
+
+    try:
+        time_clock_id = STORE_MAP[store_id].get("timeClockId")
+        if not time_clock_id:
+            raise ValueError("Missing timeClockId for this store.")
+        employees = connecteam_api.get_employee_status_by_timeclock_id(time_clock_id)
+    except Exception as e:
+        logging.error(f"Error retrieving employee data for store {store_id}: {e}")
+        return f"Error retrieving employee data: {str(e)}"
+
     return render_template("dashboard.html", employees=employees, store_id=store_id)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True, host="0.0.0.0")
