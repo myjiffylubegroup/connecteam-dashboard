@@ -4,7 +4,7 @@ import json
 import requests
 import datetime
 
-# Timezone support (Python 3.9+)
+# Fixed Timezone support (Python 3.9+)
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
@@ -221,3 +221,4 @@ def get_employee_status_by_timeclock_id(clock_id: int, date: datetime.date=None)
         e.pop("_segmentSecs", None)
 
     return employees
+
