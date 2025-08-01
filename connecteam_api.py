@@ -1,108 +1,123 @@
 # connecteam_api.py
-import requests
 import os
-import datetime
 import json
+import requests
+import datetime
 
-# Load configuration
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+# Timezone support (Python 3.9+)
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
+
+# Load config.json (store_map only)
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 with open(CONFIG_PATH, "r") as f:
     config = json.load(f)
 
+STORE_MAP = config.get("store_map", {})
+
+# API key & timezone from environment
 API_KEY = os.getenv("CONNECTEAM_API_KEY")
 if not API_KEY:
     raise RuntimeError("Missing CONNECTEAM_API_KEY environment variable")
 
-STORE_MAP = config.get("store_map", {})
+TIMEZONE = os.getenv("TIMEZONE", "America/Los_Angeles")
+TZ = ZoneInfo(TIMEZONE)
+
 BASE_URL = "https://api.connecteam.com"
 HEADERS = {
     "accept": "application/json",
     "X-API-KEY": API_KEY
 }
 
-# Fetch active users and build a mapping userId -> "First LastInitial"
-def get_active_users():
+def format_duration(seconds: int) -> str:
+    """Format seconds as H:MM (drop leading zero for hours)."""
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    return f"{hours}:{minutes:02}"
+
+def format_time_utc_timestamp(ts: int) -> str:
+    """
+    Convert a UTC timestamp (seconds since epoch) into a localized
+    12-hour time string (e.g. '1:48 PM') in the configured TZ.
+    """
+    dt_utc = datetime.datetime.fromtimestamp(ts, tz=ZoneInfo("UTC"))
+    dt_local = dt_utc.astimezone(TZ)
+    # strftime %I gives 01–12, strip leading zero:
+    return dt_local.strftime("%I:%M %p").lstrip("0")
+
+def get_active_users() -> dict:
+    """Fetch active users and map userId → 'First L'."""
     url = f"{BASE_URL}/users/v1/users"
     params = {"limit": 200, "offset": 0, "order": "asc", "userStatus": "active"}
     resp = requests.get(url, headers=HEADERS, params=params)
     resp.raise_for_status()
-    payload = resp.json()
-    users = payload.get("data", {}).get("users", [])
+    users = resp.json().get("data", {}).get("users", [])
     return {
-        u.get("userId"): f"{u.get('firstName','')} {u.get('lastName','')[:1]}"
+        u["userId"]: f"{u.get('firstName','')} {u.get('lastName','')[:1]}"
         for u in users
     }
 
 USER_MAP = get_active_users()
 
-def format_duration(seconds):
+def get_weekly_totals_by_timeclock_id(clock_id: int, week_ending: datetime.date=None) -> dict:
     """
-    Format a duration in seconds into H:MM (drop leading zero for hours).
-    """
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    return f"{hours}:{minutes:02}"
-
-def format_time(dt):
-    """
-    Format a datetime object into 12-hour clock with AM/PM.
-    """
-    return dt.strftime("%I:%M %p").lstrip('0')
-
-def get_weekly_totals_by_timeclock_id(clock_id, week_ending=None):
-    """
-    Compute weekly summary for a given timeClockId.
-    Returns a dict mapping userId → {"dailySecs":{...}, "weeklySecs":..., "dailyOver8":..., "weekOver40":...}
+    Compute weekly totals for each user on this clock:
+    returns { userId: { 'dailySecs': {...}, 'weeklySecs': int, ... } }
     """
     if week_ending is None:
         week_ending = datetime.date.today()
     week_start = week_ending - datetime.timedelta(days=week_ending.weekday())
-    now_ts = int(datetime.datetime.now().timestamp())
-    weekly_summary = {}
+    now_utc = datetime.datetime.now(tz=ZoneInfo("UTC"))
+    now_ts = int(now_utc.timestamp())
 
-    for i in range(7):
-        day = week_start + datetime.timedelta(days=i)
-        day_str = day.isoformat()
+    summary = {}
+    for day_offset in range(7):
+        day = week_start + datetime.timedelta(days=day_offset)
+        ds = day.isoformat()
         url = f"{BASE_URL}/time-clock/v1/time-clocks/{clock_id}/time-activities"
-        params = {"startDate": day_str, "endDate": day_str}
+        params = {"startDate": ds, "endDate": ds}
         resp = requests.get(url, headers=HEADERS, params=params)
         resp.raise_for_status()
         users_data = resp.json().get("data", {}).get("timeActivitiesByUsers", [])
 
         for ua in users_data:
-            uid = ua.get("userId")
-            total = 0
+            uid = ua["userId"]
+            total_secs = 0
+            # Sum shift durations
             for shift in ua.get("shifts", []):
-                st = shift.get("start", {}).get("timestamp")
+                st = shift["start"]["timestamp"]
                 en = shift.get("end", {}).get("timestamp")
                 if st:
-                    total += (en or now_ts) - st
-            breaks = sum(
-                (br.get("end", {}).get("timestamp") - br.get("start", {}).get("timestamp"))
+                    total_secs += (en or now_ts) - st
+            # Sum break durations
+            break_secs = sum(
+                (br["end"]["timestamp"] - br["start"]["timestamp"])
                 for br in ua.get("manualBreaks", [])
                 if br.get("start", {}).get("timestamp") and br.get("end", {}).get("timestamp")
             )
-            net = max(0, total - breaks)
+            net = max(0, total_secs - break_secs)
 
-            entry = weekly_summary.setdefault(uid, {"dailySecs": {}, "weeklySecs": 0})
-            entry["dailySecs"][day_str] = net
+            entry = summary.setdefault(uid, {"dailySecs": {}, "weeklySecs": 0})
+            entry["dailySecs"][ds] = net
             entry["weeklySecs"] += net
 
-    for entry in weekly_summary.values():
+    # Annotate over-8h and over-40h flags
+    for entry in summary.values():
         entry["dailyOver8"] = {
-            d: secs >= 8 * 3600 for d, secs in entry["dailySecs"].items()
+            d: secs >= 8*3600 for d, secs in entry["dailySecs"].items()
         }
-        entry["weekOver40"] = entry["weeklySecs"] > 40 * 3600
+        entry["weekOver40"] = entry["weeklySecs"] > 40*3600
 
-    return weekly_summary
+    return summary
 
-def get_employee_status_by_timeclock_id(clock_id, date=None):
+def get_employee_status_by_timeclock_id(clock_id: int, date: datetime.date=None) -> list:
     """
-    Fetch and compute per-employee daily status for a given timeClockId.
-    Returns a list of dicts:
-      name, currentSegmentStart, currentTimeOnClock, totalTimeOnClock,
-      otToday, breakTaken, status, lunchStatus, lunchClass
-    Sorted by length of current segment (longest first).
+    Returns a list of dicts for each clocked employee:
+      name, currentSegmentStart, currentTimeOnClock,
+      totalTimeOnClock, otToday, breakTaken, status,
+      lunchStatus, lunchClass
     """
     if date is None:
         date = datetime.date.today()
@@ -116,90 +131,92 @@ def get_employee_status_by_timeclock_id(clock_id, date=None):
     activities = resp.json().get("data", {}).get("timeActivitiesByUsers", [])
 
     weekly = get_weekly_totals_by_timeclock_id(clock_id, date)
-    now_ts = int(datetime.datetime.now().timestamp())
-    employees = []
+    now_utc = datetime.datetime.now(tz=ZoneInfo("UTC"))
+    now_ts = int(now_utc.timestamp())
 
+    employees = []
     for ua in activities:
-        uid = ua.get("userId")
+        uid = ua["userId"]
         shifts = ua.get("shifts", [])
         if not shifts:
             continue
 
-        # Sum shift segments
-        total = 0
-        curr_start = None
+        total_secs = 0
+        current_start_ts = None
+        # Sum up shifts
         for shift in shifts:
-            st = shift.get("start", {}).get("timestamp")
+            st = shift["start"]["timestamp"]
             en = shift.get("end", {}).get("timestamp")
             if st:
                 if en:
-                    total += en - st
+                    total_secs += en - st
                 else:
-                    curr_start = st
-                    total += now_ts - st
+                    current_start_ts = st
+                    total_secs += now_ts - st
 
-        # Sum breaks
-        breaks = 0
+        # Sum break durations & detect on-break
+        break_secs = 0
         on_break = False
         for br in ua.get("manualBreaks", []):
-            bs = br.get("start", {}).get("timestamp")
+            bs = br["start"]["timestamp"]
             be = br.get("end", {}).get("timestamp")
             if bs and not be:
                 on_break = True
             if bs and be:
-                breaks += be - bs
+                break_secs += be - bs
 
-        net_daily = max(0, total - breaks)
+        net_daily_secs = max(0, total_secs - break_secs)
 
-        # Overtime
-        daily_ot = max(0, net_daily - 8 * 3600)
-        week_secs = weekly.get(uid, {}).get("weeklySecs", 0)
-        weekly_ot = max(0, week_secs - 40 * 3600)
-        ot = max(daily_ot, weekly_ot)
+        # Compute OT (daily & weekly)
+        daily_ot = max(0, net_daily_secs - 8*3600)
+        weekly_secs = weekly.get(uid, {}).get("weeklySecs", 0)
+        weekly_ot = max(0, weekly_secs - 40*3600)
+        ot_secs = max(daily_ot, weekly_ot)
 
-        # Lunch status logic
-        if breaks > 0:
+        # Determine lunch status
+        if break_secs > 0:
             lunch_status = "Taken"
             lunch_class = "lunch-ok"
         else:
-            if total < 4 * 3600:
+            if total_secs < 4*3600:
                 lunch_status = "Not Yet Due"
                 lunch_class = "lunch-ok"
-            elif total < 5 * 3600:
+            elif total_secs < 5*3600:
                 lunch_status = "Due Now"
                 lunch_class = "lunch-due"
             else:
-                overdue = total - 5 * 3600
+                overdue = total_secs - 5*3600
                 lunch_status = f"Overdue by {format_duration(overdue)}"
                 lunch_class = "lunch-overdue"
 
-        status = "On Lunch" if on_break else ("Clocked In" if curr_start else "Off")
+        status = "On Lunch" if on_break else ("Clocked In" if current_start_ts else "Off")
 
-        # Current segment formatting
-        if curr_start:
-            seg_secs = now_ts - curr_start
-            seg_time = format_duration(seg_secs)
-            seg_start = format_time(datetime.datetime.fromtimestamp(curr_start))
+        # Format current segment
+        if current_start_ts:
+            current_time_on_clock = format_duration(now_ts - current_start_ts)
+            current_segment_start = format_time_utc_timestamp(current_start_ts)
+            segment_secs = now_ts - current_start_ts
         else:
-            seg_start = None
-            seg_time = "0:00"
-            seg_secs = 0
+            current_time_on_clock = "0:00"
+            current_segment_start = None
+            segment_secs = 0
 
         employees.append({
             "name": USER_MAP.get(uid, str(uid)),
-            "currentSegmentStart": seg_start,
-            "currentTimeOnClock": seg_time,
-            "_segmentSecs": seg_secs,
-            "totalTimeOnClock": format_duration(net_daily),
-            "otToday": format_duration(ot),
-            "breakTaken": format_duration(breaks),
+            "currentSegmentStart": current_segment_start,
+            "currentTimeOnClock": current_time_on_clock,
+            "_segmentSecs": segment_secs,
+            "totalTimeOnClock": format_duration(net_daily_secs),
+            "otToday": format_duration(ot_secs),
+            "breakTaken": format_duration(break_secs),
             "status": status,
             "lunchStatus": lunch_status,
             "lunchClass": lunch_class
         })
 
-    # Sort by current segment length desc, drop helper
-    employees.sort(key=lambda x: x["_segmentSecs"], reverse=True)
+    # Sort by longest current segment first
+    employees.sort(key=lambda e: e["_segmentSecs"], reverse=True)
+    # Drop helper field
     for e in employees:
         e.pop("_segmentSecs", None)
 
