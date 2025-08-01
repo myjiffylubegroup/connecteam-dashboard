@@ -5,51 +5,63 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Connecteam Dashboard - {{ store_id }}</title>
   <style>
-    body { font-family: Arial, sans-serif; background-color: #f5f5f5; margin: 20px; }
-    h1 { color: #333; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    body { font-family: Arial, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; }
+    header { text-align: center; margin-bottom: 20px; }
+    header img { max-width: 300px; }
+    h1 { color: #73000a; text-align: center; margin: 10px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
     th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
-    th { background-color: #4CAF50; color: white; }
-    tr:nth-child(even) { background-color: #fafafa; }
+    th { background-color: #73000a; color: white; }
+    tr:nth-child(even) { background-color: #fdecea; }
     .status { font-weight: bold; }
+    .ot { color: #73000a; font-weight: bold; }
     .lunch-ok { color: green; font-weight: bold; }
     .lunch-due { color: orange; font-weight: bold; }
     .lunch-overdue { color: red; font-weight: bold; }
+    .icon { font-size: 1.2em; text-align: center; }
+    footer { margin-top: 30px; text-align: center; }
+    footer p { font-weight: bold; font-style: italic; color: #555; }
   </style>
 </head>
 <body>
-  <h1>Store {{ store_id }} Connecteam Daily Time Tracker</h1>
+  <header>
+    <img src="/static/JL_Multicare_Horz_1C.png" alt="Jiffy Lube Multicare Logo">
+    <h1>🌟 Store {{ store_id }} Dashboard 🌟</h1>
+  </header>
   {% if employees %}
     <table>
       <thead>
         <tr>
           <th>Name</th>
-          <th>Status</th>
-          <th>Current Start</th>
-          <th>Current Time</th>
-          <th>Total Time</th>
-          <th>OT Today</th>
-          <th>Break Taken</th>
-          <th>Lunch Status</th>
+          <th class="icon">⚙️ Status</th>
+          <th class="icon">🕒 Start</th>
+          <th class="icon">⏱️ Current</th>
+          <th class="icon">⌛ Total</th>
+          <th class="icon">🔥 OT</th>
+          <th class="icon">🥪 Break</th>
+          <th class="icon">🍽️ Lunch</th>
         </tr>
       </thead>
       <tbody>
         {% for emp in employees %}
         <tr>
           <td>{{ emp.name }}</td>
-          <td class="status">{{ emp.status }}</td>
-          <td>{{ emp.currentSegmentStart or '-' }}</td>
-          <td>{{ emp.currentTimeOnClock }}</td>
-          <td>{{ emp.totalTimeOnClock }}</td>
-          <td>{{ emp.otToday }}</td>
-          <td>{{ emp.breakTaken }}</td>
-          <td class="{{ emp.lunchClass }}">{{ emp.lunchStatus }}</td>
+          <td class="status icon">{{ emp.status }}</td>
+          <td class="icon">{{ emp.currentSegmentStart or '-' }}</td>
+          <td class="icon">{{ emp.currentTimeOnClock }}</td>
+          <td class="icon">{{ emp.totalTimeOnClock }}</td>
+          <td class="ot icon">{{ emp.otToday }}</td>
+          <td class="icon">{{ emp.breakTaken }}</td>
+          <td class="icon {{ emp.lunchClass }}">{{ emp.lunchStatus }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   {% else %}
-    <p>No employees currently clocked in.</p>
+    <p style="text-align: center; font-size: 1.2em; color: #73000a;">No employees currently clocked in.</p>
   {% endif %}
+  <footer>
+    <p>This data is for illustration purposes only and does not reflect actual payroll time/figures and should not be used for anything other than managing the day.</p>
+  </footer>
 </body>
 </html>
