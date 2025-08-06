@@ -63,6 +63,7 @@ def get_active_users() -> dict:
     }
 
 _user_map_cache = None
+_weekly_totals_cache = {}  # Cache for weekly totals
 
 def get_user_map():
     global _user_map_cache
@@ -130,7 +131,19 @@ def get_employee_status_by_timeclock_id(clock_id: int, date: datetime.date=None)
     resp.raise_for_status()
     activities = resp.json().get("data", {}).get("timeActivitiesByUsers", [])
 
-    weekly = get_weekly_totals_by_timeclock_id(clock_id, date)
+    # Caching weekly totals every 30 minutes per clock_id
+    cache_key = (clock_id, date)
+    now = datetime.datetime.now(tz=TZ)
+    cache_entry = _weekly_totals_cache.get(cache_key)
+
+    if not cache_entry or (now - cache_entry["timestamp"]).total_seconds() > 1800:
+        print(f"🔁 Refreshing weekly totals for clock ID {clock_id}")
+        totals = get_weekly_totals_by_timeclock_id(clock_id, date)
+        _weekly_totals_cache[cache_key] = {"data": totals, "timestamp": now}
+    else:
+        totals = cache_entry["data"]
+
+    weekly = totals
     now_utc = datetime.datetime.now(tz=ZoneInfo("UTC"))
     now_ts = int(now_utc.timestamp())
 
@@ -214,4 +227,3 @@ def get_employee_status_by_timeclock_id(clock_id: int, date: datetime.date=None)
         e.pop("_segmentSecs", None)
 
     return employees
-
