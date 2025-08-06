@@ -31,6 +31,16 @@ HEADERS = {
     "X-API-KEY": API_KEY
 }
 
+def is_within_business_hours():
+    now = datetime.datetime.now(tz=TZ)
+    weekday = now.weekday()  # Monday=0, Sunday=6
+    current_hour = now.hour
+
+    if weekday == 6:  # Sunday
+        return 9 <= current_hour < 17
+    else:  # Monday to Saturday
+        return 8 <= current_hour < 18
+
 def format_duration(seconds: int) -> str:
     """Format seconds as H:MM (drop leading zero for hours)."""
     hours = seconds // 3600
@@ -44,7 +54,6 @@ def format_time_utc_timestamp(ts: int) -> str:
     """
     dt_utc = datetime.datetime.fromtimestamp(ts, tz=ZoneInfo("UTC"))
     dt_local = dt_utc.astimezone(TZ)
-    # strftime %I gives 01–12, strip leading zero:
     return dt_local.strftime("%I:%M %p").lstrip("0")
 
 def get_active_users() -> dict:
@@ -62,10 +71,6 @@ def get_active_users() -> dict:
 USER_MAP = get_active_users()
 
 def get_weekly_totals_by_timeclock_id(clock_id: int, week_ending: datetime.date=None) -> dict:
-    """
-    Compute weekly totals for each user on this clock:
-    returns { userId: { 'dailySecs': {...}, 'weeklySecs': int, ... } }
-    """
     if week_ending is None:
         week_ending = datetime.date.today()
     week_start = week_ending - datetime.timedelta(days=week_ending.weekday())
@@ -85,13 +90,11 @@ def get_weekly_totals_by_timeclock_id(clock_id: int, week_ending: datetime.date=
         for ua in users_data:
             uid = ua["userId"]
             total_secs = 0
-            # Sum shift durations
             for shift in ua.get("shifts", []):
                 st = shift["start"]["timestamp"]
                 en = shift.get("end", {}).get("timestamp")
                 if st:
                     total_secs += (en or now_ts) - st
-            # Sum break durations
             break_secs = sum(
                 (br["end"]["timestamp"] - br["start"]["timestamp"])
                 for br in ua.get("manualBreaks", [])
@@ -103,7 +106,6 @@ def get_weekly_totals_by_timeclock_id(clock_id: int, week_ending: datetime.date=
             entry["dailySecs"][ds] = net
             entry["weeklySecs"] += net
 
-    # Annotate over-8h and over-40h flags
     for entry in summary.values():
         entry["dailyOver8"] = {
             d: secs >= 8*3600 for d, secs in entry["dailySecs"].items()
@@ -113,17 +115,14 @@ def get_weekly_totals_by_timeclock_id(clock_id: int, week_ending: datetime.date=
     return summary
 
 def get_employee_status_by_timeclock_id(clock_id: int, date: datetime.date=None) -> list:
-    """
-    Returns a list of dicts for each clocked employee:
-      name, currentSegmentStart, currentTimeOnClock,
-      totalTimeOnClock, otToday, breakTaken, status,
-      lunchStatus, lunchClass
-    """
+    if not is_within_business_hours():
+        print(f"⏰ Skipping API call for clock ID {clock_id} — outside of business hours.")
+        return []
+
     if date is None:
         date = datetime.date.today()
     ds = date.isoformat()
 
-    # Fetch today's activities
     url = f"{BASE_URL}/time-clock/v1/time-clocks/{clock_id}/time-activities"
     params = {"startDate": ds, "endDate": ds}
     resp = requests.get(url, headers=HEADERS, params=params)
@@ -143,7 +142,6 @@ def get_employee_status_by_timeclock_id(clock_id: int, date: datetime.date=None)
 
         total_secs = 0
         current_start_ts = None
-        # Sum up shifts
         for shift in shifts:
             st = shift["start"]["timestamp"]
             en = shift.get("end", {}).get("timestamp")
@@ -154,7 +152,6 @@ def get_employee_status_by_timeclock_id(clock_id: int, date: datetime.date=None)
                     current_start_ts = st
                     total_secs += now_ts - st
 
-        # Sum break durations & detect on-break
         break_secs = 0
         on_break = False
         for br in ua.get("manualBreaks", []):
@@ -167,13 +164,11 @@ def get_employee_status_by_timeclock_id(clock_id: int, date: datetime.date=None)
 
         net_daily_secs = max(0, total_secs - break_secs)
 
-        # Compute OT (daily & weekly)
         daily_ot = max(0, net_daily_secs - 8*3600)
         weekly_secs = weekly.get(uid, {}).get("weeklySecs", 0)
         weekly_ot = max(0, weekly_secs - 40*3600)
         ot_secs = max(daily_ot, weekly_ot)
 
-        # Determine lunch status
         if break_secs > 0:
             lunch_status = "Taken"
             lunch_class = "lunch-ok"
@@ -191,7 +186,6 @@ def get_employee_status_by_timeclock_id(clock_id: int, date: datetime.date=None)
 
         status = "On Lunch" if on_break else ("Clocked In" if current_start_ts else "Off")
 
-        # Format current segment
         if current_start_ts:
             current_time_on_clock = format_duration(now_ts - current_start_ts)
             current_segment_start = format_time_utc_timestamp(current_start_ts)
@@ -214,11 +208,8 @@ def get_employee_status_by_timeclock_id(clock_id: int, date: datetime.date=None)
             "lunchClass": lunch_class
         })
 
-    # Sort by longest current segment first
     employees.sort(key=lambda e: e["_segmentSecs"], reverse=True)
-    # Drop helper field
     for e in employees:
         e.pop("_segmentSecs", None)
 
     return employees
-
