@@ -42,22 +42,16 @@ def is_within_business_hours():
         return 8 <= current_hour < 18
 
 def format_duration(seconds: int) -> str:
-    """Format seconds as H:MM (drop leading zero for hours)."""
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
     return f"{hours}:{minutes:02}"
 
 def format_time_utc_timestamp(ts: int) -> str:
-    """
-    Convert a UTC timestamp (seconds since epoch) into a localized
-    12-hour time string (e.g. '1:48 PM') in the configured TZ.
-    """
     dt_utc = datetime.datetime.fromtimestamp(ts, tz=ZoneInfo("UTC"))
     dt_local = dt_utc.astimezone(TZ)
     return dt_local.strftime("%I:%M %p").lstrip("0")
 
 def get_active_users() -> dict:
-    """Fetch active users and map userId → 'First L'."""
     url = f"{BASE_URL}/users/v1/users"
     params = {"limit": 200, "offset": 0, "order": "asc", "userStatus": "active"}
     resp = requests.get(url, headers=HEADERS, params=params)
@@ -68,7 +62,14 @@ def get_active_users() -> dict:
         for u in users
     }
 
-USER_MAP = get_active_users()
+_user_map_cache = None
+
+def get_user_map():
+    global _user_map_cache
+    if _user_map_cache is None:
+        print("🔄 Loading USER_MAP from Connecteam...")
+        _user_map_cache = get_active_users()
+    return _user_map_cache
 
 def get_weekly_totals_by_timeclock_id(clock_id: int, week_ending: datetime.date=None) -> dict:
     if week_ending is None:
@@ -196,7 +197,7 @@ def get_employee_status_by_timeclock_id(clock_id: int, date: datetime.date=None)
             segment_secs = 0
 
         employees.append({
-            "name": USER_MAP.get(uid, str(uid)),
+            "name": get_user_map().get(uid, str(uid)),
             "currentSegmentStart": current_segment_start,
             "currentTimeOnClock": current_time_on_clock,
             "_segmentSecs": segment_secs,
@@ -213,3 +214,4 @@ def get_employee_status_by_timeclock_id(clock_id: int, date: datetime.date=None)
         e.pop("_segmentSecs", None)
 
     return employees
+
